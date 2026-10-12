@@ -1,0 +1,72 @@
+{
+  "uid": "wikipedia-live",
+  "title": "Wikipedia Live Edits",
+  "tags": ["flink", "kafka"],
+  "timezone": "browser",
+  "refresh": "5s",
+  "time": { "from": "now-30m", "to": "now" },
+  "schemaVersion": 39,
+  "panels": [
+    {
+      "id": 1, "type": "stat", "title": "Edits / min (latest closed window)",
+      "gridPos": { "x": 0, "y": 0, "w": 6, "h": 4 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "wiki-pg" },
+      "targets": [{ "refId": "A", "format": "table", "rawQuery": true, "editorMode": "code",
+        "rawSql": "SELECT sum(edits) AS edits FROM wiki_stats WHERE window_start = (SELECT max(window_start) FROM wiki_stats)" }],
+      "options": { "colorMode": "none", "graphMode": "none", "reduceOptions": { "calcs": ["lastNotNull"] } }
+    },
+    {
+      "id": 2, "type": "stat", "title": "Bot share (last 10 min)",
+      "gridPos": { "x": 6, "y": 0, "w": 6, "h": 4 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "wiki-pg" },
+      "targets": [{ "refId": "A", "format": "table", "rawQuery": true, "editorMode": "code",
+        "rawSql": "SELECT 100.0 * sum(bot_edits) / nullif(sum(edits), 0) AS bot_share FROM wiki_stats WHERE window_start > now() - interval '10 minutes'" }],
+      "fieldConfig": { "defaults": { "unit": "percent", "decimals": 1 } },
+      "options": { "colorMode": "none", "graphMode": "none", "reduceOptions": { "calcs": ["lastNotNull"] } }
+    },
+    {
+      "id": 3, "type": "stat", "title": "Active wikis (latest closed window)",
+      "gridPos": { "x": 12, "y": 0, "w": 6, "h": 4 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "wiki-pg" },
+      "targets": [{ "refId": "A", "format": "table", "rawQuery": true, "editorMode": "code",
+        "rawSql": "SELECT count(*) AS wikis FROM wiki_stats WHERE window_start = (SELECT max(window_start) FROM wiki_stats)" }],
+      "options": { "colorMode": "none", "graphMode": "none", "reduceOptions": { "calcs": ["lastNotNull"] } }
+    },
+    {
+      "id": 4, "type": "stat", "title": "Spikes detected (last hour)",
+      "gridPos": { "x": 18, "y": 0, "w": 6, "h": 4 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "wiki-pg" },
+      "targets": [{ "refId": "A", "format": "table", "rawQuery": true, "editorMode": "code",
+        "rawSql": "SELECT count(*) AS spikes FROM anomalies WHERE window_start > now() - interval '1 hour'" }],
+      "fieldConfig": { "defaults": { "thresholds": { "mode": "absolute", "steps": [
+        { "color": "green", "value": null }, { "color": "orange", "value": 1 } ] } } },
+      "options": { "colorMode": "value", "graphMode": "none", "reduceOptions": { "calcs": ["lastNotNull"] } }
+    },
+    {
+      "id": 5, "type": "timeseries", "title": "Edits per minute: humans vs bots",
+      "gridPos": { "x": 0, "y": 4, "w": 16, "h": 10 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "wiki-pg" },
+      "targets": [{ "refId": "A", "format": "time_series", "rawQuery": true, "editorMode": "code",
+        "rawSql": "SELECT window_start AS time, sum(edits - bot_edits) AS humans, sum(bot_edits) AS bots FROM wiki_stats WHERE $__timeFilter(window_start) GROUP BY 1 ORDER BY 1" }],
+      "fieldConfig": { "defaults": { "custom": { "drawStyle": "bars", "fillOpacity": 80, "stacking": { "mode": "normal" } } } },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
+    },
+    {
+      "id": 6, "type": "bargauge", "title": "Busiest wikis (selected range)",
+      "gridPos": { "x": 16, "y": 4, "w": 8, "h": 10 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "wiki-pg" },
+      "targets": [{ "refId": "A", "format": "table", "rawQuery": true, "editorMode": "code",
+        "rawSql": "SELECT wiki, sum(edits) AS edits FROM wiki_stats WHERE $__timeFilter(window_start) GROUP BY wiki ORDER BY 2 DESC LIMIT 10" }],
+      "fieldConfig": { "defaults": { "color": { "mode": "fixed", "fixedColor": "blue" }, "min": 0 } },
+      "options": { "orientation": "horizontal", "displayMode": "basic", "showUnfilled": true,
+        "reduceOptions": { "values": true, "calcs": [], "fields": "/^edits$/" } }
+    },
+    {
+      "id": 7, "type": "table", "title": "Edit spikes (z-score >= 3 vs. the wiki's own baseline)",
+      "gridPos": { "x": 0, "y": 14, "w": 24, "h": 9 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "wiki-pg" },
+      "targets": [{ "refId": "A", "format": "table", "rawQuery": true, "editorMode": "code",
+        "rawSql": "SELECT window_start AS \"window\", wiki, edits, round(expected::numeric, 1) AS expected, round(z_score::numeric, 1) AS z_score FROM anomalies ORDER BY window_start DESC LIMIT 50" }]
+    }
+  ]
+}
